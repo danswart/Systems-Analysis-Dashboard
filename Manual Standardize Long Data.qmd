@@ -1,0 +1,157 @@
+---
+title: "Manually Standardize Long Data"
+format: html
+---
+
+
+***COMMENT OUT ALL SAVE FUNCTIONS BELOW BEFORE PROCESSING ANYTHING***
+
+
+## ✅   The Data Pipeline 
+
+
+Raw Data → Cleaning Script → Standardized Format: e.g., date, value, campus, metric, ...
+
+Dashboard Upload → Smart Filtering → Ready for Charts
+
+The date, value, categories structure make all chart code more intuitive:
+
+Run Charts: aes(x = date, y = value)
+Line Charts: aes(x = date, y = value, color = campus)
+Control Charts: Same structure + control limits
+Cohort Analysis: group_by() any categorical column
+
+
+# Manually standardize the data
+
+```{r}
+# Setup function for later use in this manual pipeline
+
+# In your exploration function - helpful for complex datasets
+explore_my_data <- function(data) {
+  cat("=== MY DATA CHECK ===\n")
+  cat("Dimensions:", nrow(data), "rows x", ncol(data), "columns\n")
+  cat("File size:", format(object.size(data), units = "MB"), "\n")
+  cat("Columns:", paste(names(data), collapse = ", "), "\n\n")
+  
+  glimpse(data)
+  
+  # Extra useful for complex data:
+  cat("\nMissing values per column:\n")
+  missing_summary <- sapply(data, function(x) sum(is.na(x)))
+  print(missing_summary[missing_summary > 0])  # Only show columns with missing data
+  
+  cat("\nData types summary:\n")
+  print(table(sapply(data, class)))
+}
+
+
+# Use it:
+# explore_my_data(raw_data)
+```
+
+
+
+
+# 1. Load libraries you need for manual process
+
+```{r}
+
+library(dplyr)
+library(readr)
+library(janitor)
+
+```
+
+# 2. Load your data manually
+
+```{r}
+
+raw_data <- read_csv("data/20250227 SCUC Snapshots 1995 to 2023-LONG.csv", show_col_types = FALSE)
+
+```
+
+# 3. Quick exploration 
+
+```{r}
+
+explore_my_data(raw_data)   # function created in this manual pipeline
+
+```
+
+
+
+# 4. EXPLICITLY clean the data frame (you control each step)
+
+```{r}
+
+man_standardized_data <- raw_data %>%
+  clean_names() %>%                        # YOU decide to clean names
+  rename(date = year,                      # YOU explicitly rename
+         value = value) %>%                  # YOU explicitly rename  
+  select(date, value, section, grouping, sort, units, grade, level_achieved) %>%  # What COLUMNS to keep & their order
+  arrange(section, date)            # Controls the order of the ROWS (sorting)
+
+```
+
+# Specific case:  mutate the value column, but only IF units equals 'rate'
+
+```{r}
+
+# Specify which column(s) must meet the criteria for transformation:
+
+man_standardized_data <- man_standardized_data %>%
+  mutate(value = case_when(
+    units == "rate" ~ value / 100,    # If 'rate' found in column 'units', divide by 100
+    TRUE ~ value                      # Otherwise, keep as is
+  ))
+
+```
+
+
+
+# 5. Verify the results
+
+```{r}
+
+glimpse(man_standardized_data)
+head(man_standardized_data)
+
+```
+
+
+## I prefer this automated save function
+
+
+```{r}
+
+# MakE automated functions available for automated data cleaning
+source("automated_data_cleaning_functions.r")
+
+```
+
+and use the automated function
+
+```{r}
+# save_cleaned_data(man_standardized_data, "data/man_standardized_20250227_SCUC_Snapshots_1995_to_2023-LONG.csv")
+
+```
+
+
+## Saving results
+
+```{r, echo=FALSE}
+ 
+# # Save and verify
+ # write_csv(man_standardized_data, "data/standardized_20250227_SCUC_Snapshots_1995_to_2023-LONG.csv")
+ 
+ # # Quick confirmation
+ # cat("Saved:", nrow(man_standardized_data), "rows x", ncol(man_standardized_data), "columns\n")
+ # cat("File location: data/man_standardized_2024-25_weekly_attendance-LONG.csv\n")
+ # cat("Columns:", paste(names(man_standardized_data), collapse = ", "), "\n")
+
+```
+
+
+
+

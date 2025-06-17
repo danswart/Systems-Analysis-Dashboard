@@ -1,0 +1,107 @@
+---
+title: "Auto Standardize Long Data"
+format: html
+---
+
+
+
+
+## ✅   The Data Pipeline 
+
+
+Raw Data → Cleaning Script → Standardized Format: e.g., date, value, campus, metric, ...
+
+Dashboard Upload → Smart Filtering → Ready for Charts
+
+The date, value, categories structure make all chart code more intuitive:
+
+Run Charts: aes(x = date, y = value)
+Line Charts: aes(x = date, y = value, color = campus)
+Control Charts: Same structure + control limits
+Cohort Analysis: group_by() any categorical column
+
+
+
+## Source automated functions
+
+```{r}
+
+# making automated functions available for automated data cleaning
+source("automated_data_cleaning_functions.r")
+
+```
+
+##  Automated Data Exploration Strategy:
+
+Load & full-luxury exploration all in one step (this is same as explore_data function)
+
+```{r}
+
+auto_raw_data1 <- load_and_explore("data/20250227 SCUC Snapshots 1995 to 2023-LONG.csv")
+
+```
+
+This gives you everything:
+
+- Dimensions
+- Column names with numbers (for easy reference)
+- Data types (glimpse() output)
+- First 6 rows of actual data
+- Auto-detected date/numeric/categorical columns
+
+
+
+
+# Full-luxury explore (if data already loaded)
+
+```{r}
+
+auto_raw_data2 <- explore_data(auto_raw_data1)
+
+```
+
+
+
+
+Quick exploration function (tibble of 1st 6 rows only)
+
+```{r}
+
+auto_raw_data3 <- quick_look(auto_raw_data1)
+
+```
+
+
+Standardize the data frame automatically (requires path to original data)
+This does all that the manual pipeline does in one function
+
+```{r}
+std_data1 <- clean_eda_data("data/20250227 SCUC Snapshots 1995 to 2023-LONG.csv")
+
+```
+
+
+ALL rates and percentages must be expressed in decimal form.
+
+If needed, convert column of your choice to decimal form
+
+```{r}
+# Usage examples:
+
+std_data1 <- convert_column_to_decimal(std_data1, "value")
+# std_data1 <- convert_column_to_decimal(std_data1, "completion_rate")
+# std_data1 <- convert_column_to_decimal(std_data1, "satisfaction_score")
+
+```
+
+
+
+Save the results
+
+```{r}
+
+save_cleaned_data(std_data1, "data/auto_standardized_20250227_SCUC_Snapshots_1995_to_2023-LONG.csv")
+
+```
+
+
