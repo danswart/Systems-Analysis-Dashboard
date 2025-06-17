@@ -1,0 +1,1 @@
+Dashboard designed to analyze the stability and capability of a system, with the aim of improving the system in order to improve the output of the system.  Action is to be taken on the system; not the elements of data used in the analysis.
