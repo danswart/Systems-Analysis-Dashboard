@@ -1,0 +1,88 @@
+---
+title: "Partial Trended Chart Code"
+format: html
+---
+
+ ### REGRESSION ANALYSIS FOR TREND DETECTION ###
+  
+  # Fit linear model to detect trend
+  model_formula <- as.formula(paste("`", input$y_column, "` ~ `", input$x_column, "`", sep=""))
+  model <- lm(model_formula, data = data_control_limits)
+  model_summary <- summary(model)
+  
+  
+  
+  # Extract regression statistics
+  p_value <- coef(model_summary)[2, 4]  # p-value for the slope
+  r_squared <- model_summary$r.squared
+  slope <- coef(model)[2]
+  intercept <- coef(model)[1]
+  
+  
+  
+  # Calculate residual standard deviation for control limits
+  residuals_sd <- sd(residuals(model), na.rm = TRUE)
+  
+  
+  # Create modified dataset for chart visualization
+  data_modified <- data
+
+
+  # Apply same data processing for visualization
+  if (input$divide_by_100) {
+    data_modified[[input$y_column]] <- data_modified[[input$y_column]] / 100
+  }
+  
+  if (input$y_axis_type == "percent") {
+    data_modified[[input$y_column]] <- data_modified[[input$y_column]] * 100
+  }
+  
+  
+  
+  # Calculate trend-adjusted centerline and control limits
+  data_modified$centerline <- predict(model, newdata = data_modified)
+  data_modified$ucl <- data_modified$centerline + 3 * (residuals_sd / 1.128)
+  data_modified$lcl <- pmax(data_modified$centerline - 3 * (residuals_sd / 1.128), 0)  # Can't be negative
+  
+  
+  
+  # Add regression statistics to the data
+  data_modified$p_value <- p_value
+  data_modified$r_squared <- r_squared
+  data_modified$slope <- slope
+  data_modified$intercept <- intercept
+
+
+
+  # STATISTICAL PROCESS CONTROL ANALYSIS (relative to trend)
+  
+  # Shewhart Rule #1: Point outside trend-adjusted control limits
+  y_viz_values <- data_modified[[input$y_column]]
+  sigma_signals <- y_viz_values < data_modified$lcl | y_viz_values > data_modified$ucl
+  data_modified$emp_pts_out_of_control <- sigma_signals
+
+
+  # Runs analysis relative to trending centerline
+  runs <- sign(y_viz_values - data_modified$centerline)
+  runs <- runs[runs != 0]  # Remove zeros
+  
+  
+  if(length(runs) > 0) {
+    runs_lengths <- rle(runs)$lengths
+    n_obs <- sum(runs_lengths)
+    longest_run <- max(runs_lengths)
+    n_runs <- length(runs_lengths)
+    n_crossings <- n_runs - 1
+    longest_run_max <- round(log2(n_obs) + 3)
+    n_crossings_min <- qbinom(.05, n_obs - 1, 0.5)
+    
+    
+    
+    runs_signal <- (longest_run > longest_run_max | n_crossings < n_crossings_min)
+  } else {
+    runs_signal <- FALSE
+  }
+  
+  
+  
+  data_modified$runs_signal <- runs_signal
