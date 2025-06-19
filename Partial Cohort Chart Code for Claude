@@ -1,0 +1,312 @@
+Cohort Code from Flexdashboard
+
+
+numericInput("cohort_start_grade", "Cohort Starting Grade:", 3, min = 3, max = 8)
+numericInput("cohort_start_year", "Cohort Starting Year:", 2018, min = 2015, max = 2023)
+
+
+
+
+# Cohort tracking reactive function
+cohort_data <- reactive({
+  # Require the basic inputs
+  req(filtered_data(), input$cohort_start_year, input$cohort_start_grade, input$year_range)
+
+  # Print debugging info
+  print("Cohort data function running")
+  print(paste("Start year:", input$cohort_start_year))
+  print(paste("Start grade:", input$cohort_start_grade))
+
+  start_year <- as.numeric(input$cohort_start_year)
+  start_grade <- as.numeric(input$cohort_start_grade)
+
+  # Get base data
+  all_data <- filtered_data()
+  print(paste("Filtered data rows:", nrow(all_data)))
+
+  # If no data, return empty frame
+  if(nrow(all_data) == 0) {
+    return(data.frame())
+  }
+
+  # Use the existing year range to determine how many years to track
+  available_years <- seq(from = input$year_range[1], to = input$year_range[2])
+  print(paste("Available years:", paste(available_years, collapse=", ")))
+
+  # Calculate which years we can actually track based on start year and available range
+  usable_years <- available_years[available_years >= start_year]
+  print(paste("Usable years:", paste(usable_years, collapse=", ")))
+
+  # Make sure we don't go beyond available data
+  if(length(usable_years) == 0) {
+    print("No usable years found")
+    return(data.frame()) # Return empty data frame if no valid years
+  }
+
+  # Calculate corresponding grades (1 grade level per year)
+  years_to_track <- length(usable_years)
+  grades <- seq(from = start_grade, by = 1, length.out = years_to_track)
+  print(paste("Tracking grades:", paste(grades, collapse=", ")))
+
+  # Verify we have grade_level_code in our data
+  if(!"grade_level_code" %in% names(all_data)) {
+    print("Warning: grade_level_code column not found, looking for grade_level_name")
+    # Try to use grade_level_name if available
+    if("grade_level_name" %in% names(all_data)) {
+      # Extract numbers from grade level names (e.g., "Grade 3" → 3)
+      all_data$grade_level_code <- as.numeric(gsub("\\D", "", all_data$grade_level_name))
+    } else {
+      print("Error: Neither grade_level_code nor grade_level_name found")
+      return(data.frame())
+    }
+  }
+
+  # This is important: we need to make sure we're only including the right grade for each year
+  final_result <- data.frame()
+  for (i in 1:length(usable_years)) {
+    current_year <- usable_years[i]
+    current_grade <- grades[i]
+
+    print(paste("Looking for year", current_year, "and grade", current_grade))
+
+    year_data <- all_data %>%
+      filter(year == current_year, grade_level_code == current_grade)
+
+    print(paste("Found", nrow(year_data), "rows"))
+
+    if(nrow(year_data) > 0) {
+      final_result <- rbind(final_result, year_data)
+    }
+  }
+
+  print(paste("Final result has", nrow(final_result), "rows"))
+
+  # If we have no data, return empty frame
+  if(nrow(final_result) == 0) {
+    print("No matching data found for cohort")
+    return(data.frame())
+  }
+
+  # Add a progression label for the x-axis
+  final_result$progression <- paste0("Year ", final_result$year, " (Grade ", final_result$grade_level_code, ")")
+
+  # Sort by year to ensure correct order in chart
+  final_result <- final_result %>% arrange(year)
+
+  return(final_result)
+})
+
+
+
+
+
+#######################  COHORT CHART LOGIC  #####
+
+# Cohort progression tracking chart
+output$cohort_chart_plot <- renderPlot({
+  print("Cohort chart rendering started")
+
+  # Check if cohort data function exists and has data
+  if(!exists("cohort_data") || is.null(try(cohort_data(), silent = TRUE))) {
+    print("No cohort_data() function available")
+    return(ggplot() +
+      annotate("text", x = 0.5, y = 0.5,
+               label = "Cohort data function not available.\nThis chart requires cohort_data() reactive function.") +
+      theme_void())
+  }
+
+  # Get cohort data
+  data <- cohort_data()
+  print(paste("Cohort data has", nrow(data), "rows"))
+
+  # Make sure we have data
+  if (nrow(data) == 0) {
+    print("No cohort data available")
+    return(ggplot() +
+      annotate("text", x = 0.5, y = 0.5,
+               label = "No cohort data available with current selections.\nTry adjusting filters or cohort settings.") +
+      theme_void())
+  }
+
+  # SIMPLIFIED TITLES - use text inputs directly
+  title <- if(!is.null(input$chart_title) && input$chart_title != "") {
+    paste0("<span style='color:darkorchid1'>Cohort Progression: ", input$chart_title, "</span>")
+  } else {
+    "<span style='color:darkorchid1'>Cohort Progression Chart</span>"
+  }
+
+  # Try to create cohort-specific subtitle with error handling
+  subtitle <- tryCatch({
+    if(!is.null(input$cohort_start_grade) && !is.null(input$cohort_start_year)) {
+      paste0("Tracking cohort from Grade ", input$cohort_start_grade,
+             " (", input$cohort_start_year, ")")
+    } else {
+      "Student Cohort Academic Progression"
+    }
+  }, error = function(e) {
+    "Student Cohort Academic Progression"
+  })
+
+  caption <- if(!is.null(input$chart_caption) && input$chart_caption != "") {
+    input$chart_caption
+  } else {
+    "Following the same group of students over time"
+  }
+
+  # Check if progression column exists
+  if(!"progression" %in% names(data)) {
+    print("Warning: 'progression' column not found in cohort data")
+    # Try to use x_column as fallback
+    x_col <- if(!is.null(input$x_column) && input$x_column %in% names(data)) {
+      input$x_column
+    } else {
+      names(data)[1]  # Use first column as fallback
+    }
+  } else {
+    x_col <- "progression"
+  }
+
+
+
+
+  ##### CREATE THE COHORT PROGRESSION CHART  #####
+
+  cohort_chart <- ggplot(data,
+                         aes(x = .data[[x_col]],
+                             y = .data[[input$y_column]]
+                             )
+                         ) +
+
+    # Connect points to show progression
+    geom_line(group = 1,
+              color = "darkgray",
+              linewidth = 2.0
+              ) +
+
+    # Highlight each progression point
+    geom_point(size = 8,
+               color = "blue"
+               ) +
+
+    # Add value labels on points
+    geom_text(
+      aes(label = format(round(.data[[input$y_column]],
+                               1)
+                         )
+          ),
+      vjust = -1.5,
+      hjust = 0.5,
+      size = 6,
+      color = "darkblue",
+      fontface = "bold"
+    ) +
+
+    # Chart labels
+    labs(
+      title = title,
+      subtitle = subtitle,
+      caption = caption,
+      x = element_blank(),
+      y = element_blank()
+    )
+
+  # UNIVERSAL Y-AXIS formatting
+  if (input$y_axis_type == "percent") {
+
+    cohort_chart <- cohort_chart +
+      scale_y_continuous(
+        labels = function(y) paste0(format(y,
+                                           nsmall = 0
+                                           ),
+                                    "%"
+                                    ),
+        expand = c(0.25,
+                   0.25
+                   ),
+        name = "Percent (%)"
+        )
+  } else if (input$y_axis_type == "rate") {
+    cohort_chart <- cohort_chart +
+      scale_y_continuous(
+        labels = scales::percent_format(),
+        expand = c(0.25,
+                   0.25
+                   ),
+        name = "Percent (%)"
+    )
+  } else if (input$y_axis_type == "currency") {
+    cohort_chart <- cohort_chart + scale_y_continuous(
+      labels = scales::dollar,
+      expand = c(0.25, 0.25),
+      name = "Amount (USD)"
+    )
+  } else if (input$y_axis_type == "count") {
+    cohort_chart <- cohort_chart + scale_y_continuous(
+      labels = scales::comma,
+      expand = c(0.25, 0.25),
+      name = "Count"
+    )
+  } else {
+    cohort_chart <- cohort_chart + scale_y_continuous(
+      labels = scales::number_format(accuracy = 0.01),
+      expand = c(0.25, 0.25),
+      name = "Value"
+    )
+  }
+
+  # UNIVERSAL X-AXIS - Use our helper function
+  cohort_chart <- configure_x_axis(cohort_chart, data, x_col)
+
+  # Beautiful theme and styling (consistent with other charts)
+  cohort_chart <- cohort_chart +
+    theme_minimal(base_size = 36, base_family = 'Cabin') +
+
+    theme(
+      aspect.ratio = 2/5,  # Consistent aspect ratio
+      legend.position = "none",
+      plot.title.position = "panel",
+      text = element_text(color = "royalblue"),
+
+      plot.title = ggtext::element_markdown(
+        color = "darkgreen",
+        size = rel(1.25),
+        face = "bold",
+        lineheight = 1.1,
+        margin = margin(0, 0, 0, 0, "pt")
+      ),
+
+      plot.subtitle = ggtext::element_markdown(
+        color = "darkgreen",
+        size = rel(1.1),
+        face = "bold",
+        lineheight = 0.90,
+        margin = margin(5, 0, 0, 0, "pt")
+      ),
+
+      plot.caption = element_text(
+        size = rel(0.95),
+        hjust = 0,
+        vjust = 2,
+        face = "italic",
+        color = "darkblue"
+      ),
+
+      # X-axis styling
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      axis.text = element_text(color = "black"),
+
+      panel.background = element_rect(fill = "white", color = NA),
+      plot.background = element_rect(fill = "white", color = NA)
+    )
+
+  # Save the plot to reactive storage
+  plot_store$cohort_chart <- cohort_chart
+
+  # Return the chart
+  return(cohort_chart)
+})
+
+
+
+
+
